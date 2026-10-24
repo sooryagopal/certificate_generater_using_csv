@@ -1,0 +1,9 @@
+# AURELIA — Bulk Certificate Generator
+# Production Dependencies
+customtkinter>=5.2.0
+pandas>=2.0.0
+pillow>=10.0.0
+pymupdf>=1.23.0
+reportlab>=4.0.0
+pytest>=7.0.0
+pyinstaller>=6.0.0

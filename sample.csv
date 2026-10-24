@@ -1,0 +1,11 @@
+Name,RollNumber,Department,Class,EventName,EventDate,College,Email,Phone,CertificateID,Prize,Duration
+Soorya G,23ADR154,AIDS,IV Year,NEWELLS 3.0,24-10-2026,KEC,soorya@example.com,9876543210,CERT001,First Prize,24 Hours
+Prathisha S,23ADR132,AIDS,IV Year,NEWELLS 3.0,24-10-2026,KEC,prathisha@example.com,9876543211,CERT002,Second Prize,24 Hours
+Ruban S,23ADR144,AIDS,IV Year,NEWELLS 3.0,24-10-2026,KEC,ruban@example.com,9876543212,CERT003,Third Prize,24 Hours
+Karthik Raja M,009ADR042,CSE,III Year,HACK-A-THON 2026,15-11-2026,MIT,karthik@example.com,0987654321,CERT004,Special Jury Award,36 Hours
+Aurelia Vance,001048,ECE,II Year,INNOVISION 2026,05-12-2026,Stanford,aurelia@example.com,9876543214,CERT005,First Prize,12 Hours
+சூர்யா ஜி,23ADR155,AIDS,IV Year,NEWELLS 3.0,24-10-2026,KEC,soorya_tamil@example.com,9876543215,CERT006,Participation,24 Hours
+René François,007890,MECH,I Year,ROBO-CHALLENGE,18-09-2026,Polytechnique,rene@example.com,0033145678,CERT007,Best Innovation,48 Hours
+Ananya Subramanian,23ADR199,AIDS,IV Year,NEWELLS 3.0,24-10-2026,KEC,ananya@example.com,9876543217,CERT008,First Prize,24 Hours
+Alexander Montgomery-Cunningham,22CSE890,CSE,IV Year,INTERNATIONAL TECH EXPO,30-10-2026,Oxford,alex@example.com,9876543218,CERT009,Excellence Award,72 Hours
+Divya Bharathi K,24IT005,IT,I Year,CODE CRAFT 2026,12-11-2026,KEC,divya@example.com,9876543219,CERT010,Consolation Prize,8 Hours
