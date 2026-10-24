@@ -13,6 +13,7 @@ import customtkinter as ctk
 
 from ui.theme import AureliaTheme
 from models.text_field import TextField
+from models.strike_line import StrikeLine
 from core.layout_manager import LayoutManager
 from core.font_manager import FontManager
 
@@ -61,41 +62,49 @@ class FieldPanel(ctk.CTkFrame):
 
         lbl_title = ctk.CTkLabel(
             header_frame,
-            text="TEXT FIELDS",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            text="ELEMENTS & LINES",
+            font=ctk.CTkFont(size=12, weight="bold"),
             text_color=AureliaTheme.GOLD_PRIMARY,
         )
         lbl_title.pack(side="left")
 
-        # Field Action Buttons
+        # Field & Line Action Buttons
         btn_box = ctk.CTkFrame(header_frame, fg_color="transparent")
         btn_box.pack(side="right")
 
         self.btn_add = ctk.CTkButton(
-            btn_box, text="+ Add", width=54, height=26,
+            btn_box, text="+ Field", width=46, height=26,
             fg_color=AureliaTheme.GOLD_PRIMARY, hover_color=AureliaTheme.GOLD_HOVER,
-            text_color="#000000", font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#000000", font=ctk.CTkFont(size=10, weight="bold"),
             command=self._on_add_field,
         )
-        self.btn_add.pack(side="left", padx=2)
+        self.btn_add.pack(side="left", padx=1)
+
+        self.btn_add_line = ctk.CTkButton(
+            btn_box, text="+ Line", width=44, height=26,
+            fg_color=AureliaTheme.BG_PANEL_ALT, hover_color=AureliaTheme.BORDER,
+            text_color=AureliaTheme.GOLD_PRIMARY, font=ctk.CTkFont(size=10, weight="bold"),
+            command=self._on_add_strike_line,
+        )
+        self.btn_add_line.pack(side="left", padx=1)
 
         self.btn_dup = ctk.CTkButton(
-            btn_box, text="Duplicate", width=64, height=26,
+            btn_box, text="Dup", width=34, height=26,
             fg_color=AureliaTheme.BG_PANEL_ALT, hover_color=AureliaTheme.BORDER,
-            text_color=AureliaTheme.TEXT_MAIN, font=ctk.CTkFont(size=11),
-            command=self._on_duplicate_field,
+            text_color=AureliaTheme.TEXT_MAIN, font=ctk.CTkFont(size=10),
+            command=self._on_duplicate_current,
         )
-        self.btn_dup.pack(side="left", padx=2)
+        self.btn_dup.pack(side="left", padx=1)
 
         self.btn_del = ctk.CTkButton(
-            btn_box, text="Delete", width=50, height=26,
+            btn_box, text="Del", width=32, height=26,
             fg_color=AureliaTheme.ERROR_MUTED, hover_color=AureliaTheme.ERROR,
-            text_color=AureliaTheme.ERROR, font=ctk.CTkFont(size=11),
-            command=self._on_delete_field,
+            text_color=AureliaTheme.ERROR, font=ctk.CTkFont(size=10),
+            command=self._on_delete_current,
         )
-        self.btn_del.pack(side="left", padx=2)
+        self.btn_del.pack(side="left", padx=1)
 
-        # Field Listbox / Selector
+        # Field & Line Listbox / Selector
         self.field_list_container = ctk.CTkScrollableFrame(
             self, fg_color=AureliaTheme.BG_PANEL_ALT, height=110, corner_radius=6
         )
@@ -134,7 +143,17 @@ class FieldPanel(ctk.CTkFrame):
         self.settings_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.settings_scroll.pack(fill="both", expand=True, padx=10, pady=4)
 
-        self._build_inspector_sections(self.settings_scroll)
+        # 1. Text Field Controls Container
+        self.field_controls_frame = ctk.CTkFrame(self.settings_scroll, fg_color="transparent")
+        self._build_inspector_sections(self.field_controls_frame)
+
+        # 2. Strike-Through Line Controls Container
+        self.line_controls_frame = ctk.CTkFrame(self.settings_scroll, fg_color="transparent")
+        self._build_line_inspector_sections(self.line_controls_frame)
+
+        # 3. Empty State Container
+        self.empty_controls_frame = ctk.CTkFrame(self.settings_scroll, fg_color="transparent")
+        self._build_empty_inspector(self.empty_controls_frame)
 
     def _build_inspector_sections(self, parent: Any) -> None:
         """Constructs individual field editing parameter controls."""
@@ -412,19 +431,18 @@ class FieldPanel(ctk.CTkFrame):
     # -------------------------------------------------------------------------
 
     def refresh_field_list(self) -> None:
-        """Re-populates the list of field buttons."""
+        """Re-populates the list of field and strike line buttons and toggles active inspector frame."""
         for btn in self.field_buttons:
             btn.destroy()
         self.field_buttons.clear()
 
-        selected_id = self.layout_manager.selected_field_id
-
+        # Render field buttons
         for f in self.layout_manager.fields:
             status_symbol = "●" if f.is_visible else "○"
-            type_symbol = "§" if f.is_static else "⌘"
-            btn_text = f"{status_symbol} {type_symbol} {f.name}"
+            type_symbol = "T"
+            btn_text = f"{status_symbol} [{type_symbol}] {f.name}"
 
-            is_selected = (f.id == selected_id)
+            is_selected = (self.layout_manager.selected_type == "field" and f.id == self.layout_manager.selected_field_id)
             fg_color = AureliaTheme.GOLD_MUTED if is_selected else AureliaTheme.BG_PANEL
             text_color = AureliaTheme.TEXT_MAIN if f.is_visible else AureliaTheme.TEXT_DISABLED
 
@@ -442,7 +460,44 @@ class FieldPanel(ctk.CTkFrame):
             btn.pack(fill="x", pady=1)
             self.field_buttons.append(btn)
 
-        self.load_selected_field()
+        # Render strike line buttons
+        for l in self.layout_manager.lines:
+            status_symbol = "●" if l.is_visible else "○"
+            btn_text = f"{status_symbol} [━] {l.name}"
+
+            is_selected = (self.layout_manager.selected_type == "line" and l.id == self.layout_manager.selected_line_id)
+            fg_color = AureliaTheme.GOLD_MUTED if is_selected else AureliaTheme.BG_PANEL
+            text_color = AureliaTheme.TEXT_MAIN if l.is_visible else AureliaTheme.TEXT_DISABLED
+
+            btn = ctk.CTkButton(
+                self.field_list_container,
+                text=btn_text,
+                anchor="w",
+                height=26,
+                fg_color=fg_color,
+                hover_color=AureliaTheme.BORDER,
+                text_color=text_color,
+                font=ctk.CTkFont(size=11, weight="bold" if is_selected else "normal"),
+                command=lambda line_id=l.id: self._select_line(line_id),
+            )
+            btn.pack(fill="x", pady=1)
+            self.field_buttons.append(btn)
+
+        # Display corresponding inspector controls
+        if self.layout_manager.selected_type == "line" and self.layout_manager.selected_line_id:
+            self.field_controls_frame.pack_forget()
+            self.empty_controls_frame.pack_forget()
+            self.line_controls_frame.pack(fill="both", expand=True)
+            self.load_selected_line()
+        elif self.layout_manager.selected_type == "field" and self.layout_manager.selected_field_id:
+            self.line_controls_frame.pack_forget()
+            self.empty_controls_frame.pack_forget()
+            self.field_controls_frame.pack(fill="both", expand=True)
+            self.load_selected_field()
+        else:
+            self.field_controls_frame.pack_forget()
+            self.line_controls_frame.pack_forget()
+            self.empty_controls_frame.pack(fill="both", expand=True)
 
     def load_selected_field(self) -> None:
         """Pulls attributes from currently selected field into UI inputs."""
@@ -708,6 +763,16 @@ class FieldPanel(ctk.CTkFrame):
                 self.on_change()
 
     def _on_toggle_visibility(self) -> None:
+        if self.layout_manager.selected_type == "line":
+            selected_line = self.layout_manager.get_selected_line()
+            if selected_line:
+                new_vis = not selected_line.is_visible
+                self.layout_manager.update_line_property(selected_line.id, is_visible=new_vis)
+                self.refresh_field_list()
+                if self.on_change:
+                    self.on_change()
+            return
+
         selected = self.layout_manager.get_selected_field()
         if selected:
             new_vis = not selected.is_visible
@@ -715,6 +780,325 @@ class FieldPanel(ctk.CTkFrame):
             self.refresh_field_list()
             if self.on_change:
                 self.on_change()
+
+    # -------------------------------------------------------------------------
+    # Strike-Through Line Inspector & Handlers
+    # -------------------------------------------------------------------------
+
+    def _build_empty_inspector(self, parent: Any) -> None:
+        """Draws subtle guide prompt when no field or line is selected."""
+        lbl = ctk.CTkLabel(
+            parent,
+            text="No element selected.\n\nClick any text field or strike-through line\non the canvas or list above to edit its properties.",
+            text_color=AureliaTheme.TEXT_MUTED,
+            font=ctk.CTkFont(size=11),
+            justify="center",
+        )
+        lbl.pack(padx=10, pady=40)
+
+    def _build_line_inspector_sections(self, parent: Any) -> None:
+        """Constructs dedicated inspector controls for strike-through line editing."""
+        sec_label = ctk.CTkLabel(
+            parent,
+            text="STRIKE-THROUGH LINE",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=AureliaTheme.GOLD_PRIMARY,
+        )
+        sec_label.pack(anchor="w", padx=4, pady=(8, 4))
+
+        self.line_entry_name = ctk.CTkEntry(
+            parent,
+            placeholder_text="Strike Line Label",
+            fg_color=AureliaTheme.BG_INPUT,
+        )
+        self.line_entry_name.pack(fill="x", padx=4, pady=3)
+        self.line_entry_name.bind("<KeyRelease>", lambda e: self._on_line_prop_change("name", self.line_entry_name.get()))
+
+        # Quick Presets for Symposium / Certificate templates
+        sec_presets = ctk.CTkLabel(
+            parent,
+            text="QUICK POSITION PRESETS",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color=AureliaTheme.TEXT_MUTED,
+        )
+        sec_presets.pack(anchor="w", padx=4, pady=(10, 2))
+
+        preset_box = ctk.CTkFrame(parent, fg_color="transparent")
+        preset_box.pack(fill="x", padx=4, pady=2)
+
+        btn_preset_non_tech = ctk.CTkButton(
+            preset_box,
+            text="Strike NON-TECH",
+            height=26,
+            fg_color=AureliaTheme.BG_PANEL_ALT,
+            hover_color=AureliaTheme.BORDER,
+            text_color=AureliaTheme.GOLD_PRIMARY,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            command=lambda: self._apply_line_preset(x=0.625, y=0.555, length=0.125, thickness=3),
+        )
+        btn_preset_non_tech.pack(side="left", expand=True, fill="x", padx=(0, 2))
+
+        btn_preset_tech = ctk.CTkButton(
+            preset_box,
+            text="Strike TECH",
+            height=26,
+            fg_color=AureliaTheme.BG_PANEL_ALT,
+            hover_color=AureliaTheme.BORDER,
+            text_color=AureliaTheme.GOLD_PRIMARY,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            command=lambda: self._apply_line_preset(x=0.485, y=0.555, length=0.085, thickness=3),
+        )
+        btn_preset_tech.pack(side="right", expand=True, fill="x", padx=(2, 0))
+
+        # Position & Length Section
+        sec_pos = ctk.CTkLabel(
+            parent,
+            text="POSITION & LENGTH",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=AureliaTheme.GOLD_PRIMARY,
+        )
+        sec_pos.pack(anchor="w", padx=4, pady=(12, 4))
+
+        # X Position
+        self.lbl_line_x = ctk.CTkLabel(parent, text="Horizontal (X): 50%", text_color=AureliaTheme.TEXT_MUTED, font=ctk.CTkFont(size=11))
+        self.lbl_line_x.pack(anchor="w", padx=4)
+        self.slider_line_x = ctk.CTkSlider(
+            parent, from_=0.0, to=1.0, number_of_steps=200,
+            button_color=AureliaTheme.GOLD_PRIMARY, progress_color=AureliaTheme.GOLD_PRIMARY,
+            command=self._on_line_x_slide,
+        )
+        self.slider_line_x.pack(fill="x", padx=4, pady=2)
+
+        # Y Position
+        self.lbl_line_y = ctk.CTkLabel(parent, text="Vertical (Y): 55%", text_color=AureliaTheme.TEXT_MUTED, font=ctk.CTkFont(size=11))
+        self.lbl_line_y.pack(anchor="w", padx=4)
+        self.slider_line_y = ctk.CTkSlider(
+            parent, from_=0.0, to=1.0, number_of_steps=200,
+            button_color=AureliaTheme.GOLD_PRIMARY, progress_color=AureliaTheme.GOLD_PRIMARY,
+            command=self._on_line_y_slide,
+        )
+        self.slider_line_y.pack(fill="x", padx=4, pady=2)
+
+        # Line Length
+        self.lbl_line_len = ctk.CTkLabel(parent, text="Line Length: 14%", text_color=AureliaTheme.TEXT_MUTED, font=ctk.CTkFont(size=11))
+        self.lbl_line_len.pack(anchor="w", padx=4)
+        self.slider_line_len = ctk.CTkSlider(
+            parent, from_=0.01, to=0.60, number_of_steps=120,
+            button_color=AureliaTheme.GOLD_PRIMARY, progress_color=AureliaTheme.GOLD_PRIMARY,
+            command=self._on_line_len_slide,
+        )
+        self.slider_line_len.pack(fill="x", padx=4, pady=2)
+
+        # Line Thickness
+        self.lbl_line_thick = ctk.CTkLabel(parent, text="Stroke Thickness: 3 px", text_color=AureliaTheme.TEXT_MUTED, font=ctk.CTkFont(size=11))
+        self.lbl_line_thick.pack(anchor="w", padx=4)
+        self.slider_line_thick = ctk.CTkSlider(
+            parent, from_=1, to=20, number_of_steps=19,
+            button_color=AureliaTheme.GOLD_PRIMARY, progress_color=AureliaTheme.GOLD_PRIMARY,
+            command=self._on_line_thick_slide,
+        )
+        self.slider_line_thick.pack(fill="x", padx=4, pady=2)
+
+        # Colour Section
+        sec_color = ctk.CTkLabel(
+            parent,
+            text="LINE COLOUR",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=AureliaTheme.GOLD_PRIMARY,
+        )
+        sec_color.pack(anchor="w", padx=4, pady=(12, 4))
+
+        color_row = ctk.CTkFrame(parent, fg_color="transparent")
+        color_row.pack(fill="x", padx=4, pady=2)
+
+        self.line_color_preview = ctk.CTkButton(
+            color_row, text="", width=28, height=28,
+            fg_color="#000000", hover_color="#000000",
+            corner_radius=4,
+            command=self._on_line_pick_color,
+        )
+        self.line_color_preview.pack(side="left", padx=(0, 4))
+
+        self.line_entry_color = ctk.CTkEntry(
+            color_row, placeholder_text="#000000", fg_color=AureliaTheme.BG_INPUT, width=110
+        )
+        self.line_entry_color.pack(side="left", padx=2)
+        self.line_entry_color.bind("<KeyRelease>", lambda e: self._on_line_color_entry_change())
+
+        self.btn_line_pick_color = ctk.CTkButton(
+            color_row, text="Pick Color...", width=80, height=28,
+            fg_color=AureliaTheme.BG_PANEL_ALT, hover_color=AureliaTheme.BORDER,
+            text_color=AureliaTheme.TEXT_MAIN, font=ctk.CTkFont(size=11),
+            command=self._on_line_pick_color,
+        )
+        self.btn_line_pick_color.pack(side="right")
+
+        # Color palette chips
+        palette_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        palette_frame.pack(fill="x", padx=4, pady=4)
+
+        swatches = [
+            ("Black", "#000000"),
+            ("Gold", "#D4AF37"),
+            ("Charcoal", "#2A2A2E"),
+            ("Red", "#D32F2F"),
+            ("White", "#FFFFFF"),
+        ]
+        for name, hex_c in swatches:
+            btn = ctk.CTkButton(
+                palette_frame, text="", width=24, height=22,
+                fg_color=hex_c, hover_color=hex_c, corner_radius=3,
+                border_width=1, border_color=AureliaTheme.BORDER,
+                command=lambda c=hex_c: self._apply_line_color(c),
+            )
+            btn.pack(side="left", padx=2)
+
+        # Line Actions
+        sec_actions = ctk.CTkLabel(
+            parent,
+            text="ACTIONS",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=AureliaTheme.GOLD_PRIMARY,
+        )
+        sec_actions.pack(anchor="w", padx=4, pady=(14, 4))
+
+        action_row = ctk.CTkFrame(parent, fg_color="transparent")
+        action_row.pack(fill="x", padx=4, pady=2)
+
+        self.btn_line_del = ctk.CTkButton(
+            action_row, text="Delete Line", height=28,
+            fg_color=AureliaTheme.ERROR_MUTED, hover_color=AureliaTheme.ERROR,
+            text_color=AureliaTheme.ERROR, font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._on_delete_current,
+        )
+        self.btn_line_del.pack(fill="x", pady=2)
+
+    def load_selected_line(self) -> None:
+        """Pulls attributes from currently selected line into line inspector inputs."""
+        line = self.layout_manager.get_selected_line()
+        if not line:
+            return
+
+        self._updating_ui = True
+        try:
+            self.line_entry_name.delete(0, "end")
+            self.line_entry_name.insert(0, line.name)
+
+            self.lbl_line_x.configure(text=f"Horizontal (X): {int(line.x * 100)}%")
+            self.slider_line_x.set(line.x)
+
+            self.lbl_line_y.configure(text=f"Vertical (Y): {int(line.y * 100)}%")
+            self.slider_line_y.set(line.y)
+
+            self.lbl_line_len.configure(text=f"Line Length: {int(line.length * 100)}%")
+            self.slider_line_len.set(line.length)
+
+            self.lbl_line_thick.configure(text=f"Stroke Thickness: {line.thickness} px")
+            self.slider_line_thick.set(line.thickness)
+
+            self.line_entry_color.delete(0, "end")
+            self.line_entry_color.insert(0, line.color)
+            self.line_color_preview.configure(fg_color=line.color, hover_color=line.color)
+        finally:
+            self._updating_ui = False
+
+    def _on_line_x_slide(self, val: float) -> None:
+        self.lbl_line_x.configure(text=f"Horizontal (X): {int(val * 100)}%")
+        self._on_line_prop_change("x", val)
+
+    def _on_line_y_slide(self, val: float) -> None:
+        self.lbl_line_y.configure(text=f"Vertical (Y): {int(val * 100)}%")
+        self._on_line_prop_change("y", val)
+
+    def _on_line_len_slide(self, val: float) -> None:
+        self.lbl_line_len.configure(text=f"Line Length: {int(val * 100)}%")
+        self._on_line_prop_change("length", val)
+
+    def _on_line_thick_slide(self, val: float) -> None:
+        thick = max(1, int(round(val)))
+        self.lbl_line_thick.configure(text=f"Stroke Thickness: {thick} px")
+        self._on_line_prop_change("thickness", thick)
+
+    def _on_line_prop_change(self, prop: str, value: Any) -> None:
+        if self._updating_ui:
+            return
+        selected_line = self.layout_manager.get_selected_line()
+        if selected_line:
+            self.layout_manager.update_line_property(selected_line.id, **{prop: value})
+            if prop in ("name", "is_visible"):
+                self.refresh_field_list()
+            if self.on_change:
+                self.on_change()
+
+    def _apply_line_preset(self, x: float, y: float, length: float, thickness: int) -> None:
+        selected_line = self.layout_manager.get_selected_line()
+        if selected_line:
+            self.layout_manager.update_line_property(
+                selected_line.id,
+                x=x, y=y, length=length, thickness=thickness
+            )
+            self.load_selected_line()
+            if self.on_change:
+                self.on_change()
+
+    def _apply_line_color(self, hex_code: str) -> None:
+        self.line_entry_color.delete(0, "end")
+        self.line_entry_color.insert(0, hex_code)
+        self.line_color_preview.configure(fg_color=hex_code, hover_color=hex_code)
+        self._on_line_prop_change("color", hex_code)
+
+    def _on_line_color_entry_change(self) -> None:
+        val = self.line_entry_color.get().strip()
+        if val.startswith("#") and len(val) in (4, 7):
+            self.line_color_preview.configure(fg_color=val, hover_color=val)
+            self._on_line_prop_change("color", val)
+
+    def _on_line_pick_color(self) -> None:
+        curr = self.line_entry_color.get().strip() or "#000000"
+        color = colorchooser.askcolor(color=curr, title="AURELIA — Select Strike Line Color")
+        if color and color[1]:
+            self._apply_line_color(color[1])
+
+    def _on_add_strike_line(self) -> None:
+        new_line = self.layout_manager.add_strike_line(
+            name="Strike Line",
+            x=0.50,
+            y=0.55,
+            length=0.14,
+            thickness=3,
+            color="#000000",
+        )
+        self.refresh_field_list()
+        if self.on_change:
+            self.on_change()
+
+    def _select_line(self, line_id: str) -> None:
+        self.layout_manager.select_line(line_id)
+        self.refresh_field_list()
+        if self.on_change:
+            self.on_change()
+
+    def _on_duplicate_current(self) -> None:
+        if self.layout_manager.selected_type == "line":
+            selected_line = self.layout_manager.get_selected_line()
+            if selected_line:
+                self.layout_manager.duplicate_line(selected_line.id)
+                self.refresh_field_list()
+                if self.on_change:
+                    self.on_change()
+        else:
+            self._on_duplicate_field()
+
+    def _on_delete_current(self) -> None:
+        if self.layout_manager.selected_type == "line":
+            selected_line = self.layout_manager.get_selected_line()
+            if selected_line:
+                self.layout_manager.delete_line(selected_line.id)
+                self.refresh_field_list()
+                if self.on_change:
+                    self.on_change()
+        else:
+            self._on_delete_field()
 
     def _show_insert_placeholder_menu(self) -> None:
         """Pops up menu of detected CSV column tags to insert into template_text."""

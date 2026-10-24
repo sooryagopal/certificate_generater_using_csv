@@ -9,12 +9,13 @@ import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 from models.text_field import TextField
+from models.strike_line import StrikeLine
 
 
 @dataclass
 class LayoutPreset:
     """
-    Encapsulates a complete reusable certificate typography and field layout.
+    Encapsulates a complete reusable certificate typography, field, and strike-through line layout.
     """
     name: str = "Default Layout"
     version: str = "2.0"
@@ -23,6 +24,7 @@ class LayoutPreset:
     template_height: int = 1080
     template_name: Optional[str] = None
     fields: List[TextField] = field(default_factory=list)
+    lines: List[StrikeLine] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.datetime.now().isoformat())
 
@@ -38,6 +40,7 @@ class LayoutPreset:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "fields": [f.to_dict() for f in self.fields],
+            "lines": [l.to_dict() for l in self.lines],
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -51,6 +54,9 @@ class LayoutPreset:
         
         raw_fields = data.get("fields", [])
         loaded_fields = [TextField.from_dict(f) for f in raw_fields if isinstance(f, dict)]
+
+        raw_lines = data.get("lines", [])
+        loaded_lines = [StrikeLine.from_dict(l) for l in raw_lines if isinstance(l, dict)]
         
         return cls(
             name=str(data.get("name", "Untitled Preset")),
@@ -60,6 +66,7 @@ class LayoutPreset:
             template_height=int(data.get("template_height", 1080)),
             template_name=data.get("template_name"),
             fields=loaded_fields,
+            lines=loaded_lines,
             created_at=str(data.get("created_at", datetime.datetime.now().isoformat())),
             updated_at=str(data.get("updated_at", datetime.datetime.now().isoformat())),
         )

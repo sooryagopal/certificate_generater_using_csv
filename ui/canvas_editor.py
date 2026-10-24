@@ -13,18 +13,19 @@ from PIL import Image, ImageTk
 
 from ui.theme import AureliaTheme
 from models.text_field import TextField
+from models.strike_line import StrikeLine
 from core.layout_manager import LayoutManager
 from core.renderer import Renderer
 
 
 class CanvasEditor(ctk.CTkFrame):
-    """Visual drag-and-drop workspace for positioning certificate fields."""
+    """Visual drag-and-drop workspace for positioning certificate fields and strike-through lines."""
 
     def __init__(
         self,
         master: Any,
         layout_manager: LayoutManager,
-        on_field_selected: Optional[Callable[[Optional[TextField]], None]] = None,
+        on_field_selected: Optional[Callable[[Optional[Any]], None]] = None,
         **kwargs: Any,
     ):
         super().__init__(master, fg_color=AureliaTheme.BG_MAIN, corner_radius=0, **kwargs)
@@ -53,8 +54,11 @@ class CanvasEditor(ctk.CTkFrame):
         self._displayed_w: int = 0
         self._displayed_h: int = 0
 
-        # Dragging state
+        # Tool Mode & Dragging state
+        self._tool_mode: str = "select"  # "select" or "add_line"
+        self._drag_mode: Optional[str] = None  # "field", "line_move", "line_left", "line_right"
         self._drag_field_id: Optional[str] = None
+        self._drag_line_id: Optional[str] = None
         self._drag_start_norm_x: float = 0.0
         self._drag_start_norm_y: float = 0.0
         self._mouse_down_canvas_x: float = 0.0
@@ -136,6 +140,23 @@ class CanvasEditor(ctk.CTkFrame):
             command=self._on_grid_toggled,
         )
         self.chk_grid.pack(side="left", padx=6, pady=6)
+
+        # Strike Line Separator & Tool
+        sep_tool = ctk.CTkFrame(self.toolbar, width=2, height=20, fg_color=AureliaTheme.BORDER)
+        sep_tool.pack(side="left", padx=8, pady=10)
+
+        self.btn_strike_line = ctk.CTkButton(
+            self.toolbar,
+            text="━ Strike Line",
+            width=115,
+            height=28,
+            fg_color=AureliaTheme.BG_PANEL_ALT,
+            hover_color=AureliaTheme.BORDER,
+            text_color=AureliaTheme.GOLD_PRIMARY,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._toggle_strike_line_tool,
+        )
+        self.btn_strike_line.pack(side="left", padx=4, pady=6)
 
         # Dimensions info badge on right
         self.lbl_dims = ctk.CTkLabel(
@@ -288,12 +309,13 @@ class CanvasEditor(ctk.CTkFrame):
             self._draw_empty_state()
             return
 
-        # 1. Render certificate graphic with text overlays using core Renderer
+        # 1. Render certificate graphic with text overlays and strike lines using core Renderer
         rendered = self.renderer.render_certificate(
             template_image=self.template_image,
             fields=self.layout_manager.fields,
             record=self.current_record,
             scale=self._scale,
+            lines=self.layout_manager.lines,
         )
         self._rendered_pil_img = rendered
         self._rendered_tk_img = ImageTk.PhotoImage(rendered)
@@ -322,10 +344,15 @@ class CanvasEditor(ctk.CTkFrame):
         for g in self._active_guidelines:
             self.canvas.create_line(g["coords"], fill=AureliaTheme.GOLD_PRIMARY, dash=(4, 4), width=1)
 
-        # 5. Draw selection box for currently selected field
-        selected = self.layout_manager.get_selected_field()
-        if selected and selected.is_visible:
-            self._draw_selection_box(selected)
+        # 5. Draw selection box for currently selected field or strike line
+        if self.layout_manager.selected_type == "line":
+            selected_line = self.layout_manager.get_selected_line()
+            if selected_line and selected_line.is_visible:
+                self._draw_line_selection(selected_line)
+        else:
+            selected = self.layout_manager.get_selected_field()
+            if selected and selected.is_visible:
+                self._draw_selection_box(selected)
 
     def _draw_empty_state(self) -> None:
         """Draws a clean, elegant placeholder message when no template is loaded."""
@@ -421,12 +448,87 @@ class CanvasEditor(ctk.CTkFrame):
             font=("Helvetica", 10, "bold"),
         )
 
+    def _draw_line_selection(self, line: StrikeLine) -> None:
+        """Draws drag handles (left, center, right) and position badge for selected strike line."""
+        if not self.template_image:
+            return
+
+        cx = self._offset_x + line.x * self._displayed_w
+        cy = self._offset_y + line.y * self._displayed_h
+        half_len = (line.length * self._displayed_w) / 2.0
+        x1 = cx - half_len
+        x2 = cx + half_len
+
+        # Highlight boundary rect around the line
+        box_pad_y = max(6, int(line.thickness * self._scale / 2.0) + 4)
+        self.canvas.create_rectangle(
+            x1 - 4, cy - box_pad_y,
+            x2 + 4, cy + box_pad_y,
+            outline=AureliaTheme.GOLD_PRIMARY,
+            dash=(3, 2),
+            width=1,
+        )
+
+        # Left drag handle (adjusts left endpoint / length)
+        h_sz = 5
+        self.canvas.create_rectangle(
+            x1 - h_sz, cy - h_sz,
+            x1 + h_sz, cy + h_sz,
+            fill=AureliaTheme.GOLD_PRIMARY,
+            outline=AureliaTheme.BG_MAIN,
+            width=1,
+        )
+
+        # Right drag handle (adjusts right endpoint / length)
+        self.canvas.create_rectangle(
+            x2 - h_sz, cy - h_sz,
+            x2 + h_sz, cy + h_sz,
+            fill=AureliaTheme.GOLD_PRIMARY,
+            outline=AureliaTheme.BG_MAIN,
+            width=1,
+        )
+
+        # Center move handle
+        self.canvas.create_oval(
+            cx - h_sz, cy - h_sz,
+            cx + h_sz, cy + h_sz,
+            fill=AureliaTheme.GOLD_PRIMARY,
+            outline=AureliaTheme.BG_MAIN,
+            width=1,
+        )
+
+        # Floating label badge above the line
+        badge_text = f" ━ {line.name} ({int(line.length * 100)}% len) "
+        self.canvas.create_text(
+            cx, cy - box_pad_y - 12,
+            text=badge_text,
+            fill=AureliaTheme.GOLD_PRIMARY,
+            font=("Helvetica", 9, "bold"),
+        )
+
+    def _toggle_strike_line_tool(self) -> None:
+        """Toggles click-to-place Strike-Through Line tool mode."""
+        if self._tool_mode == "add_line":
+            self._tool_mode = "select"
+            self.btn_strike_line.configure(
+                fg_color=AureliaTheme.BG_PANEL_ALT,
+                text_color=AureliaTheme.GOLD_PRIMARY,
+            )
+            self.canvas.config(cursor="crosshair")
+        else:
+            self._tool_mode = "add_line"
+            self.btn_strike_line.configure(
+                fg_color=AureliaTheme.GOLD_PRIMARY,
+                text_color="#000000",
+            )
+            self.canvas.config(cursor="plus")
+
     # -------------------------------------------------------------------------
     # Mouse Interaction & Dragging
     # -------------------------------------------------------------------------
 
     def _on_mouse_down(self, event: tk.Event) -> None:
-        """Hit-test fields on click to initiate dragging or selection."""
+        """Hit-test fields and strike lines on click to initiate dragging or selection."""
         if not self.template_image:
             return
 
@@ -435,7 +537,93 @@ class CanvasEditor(ctk.CTkFrame):
         self._mouse_down_canvas_y = cy
         self._is_dragging = False
 
-        # Hit test in reverse order (top layer first)
+        # If in Add Strike Line mode: create line at clicked location
+        if self._tool_mode == "add_line":
+            norm_x, norm_y = self.canvas_to_norm(cx, cy)
+            new_line = self.layout_manager.add_strike_line(
+                x=norm_x,
+                y=norm_y,
+                length=0.14,
+                thickness=3,
+                color="#000000",
+            )
+            self._tool_mode = "select"
+            self.btn_strike_line.configure(
+                fg_color=AureliaTheme.BG_PANEL_ALT,
+                text_color=AureliaTheme.GOLD_PRIMARY,
+            )
+            self.canvas.config(cursor="crosshair")
+            if self.on_field_selected:
+                self.on_field_selected(new_line)
+            self.refresh()
+            return
+
+        # 1. First, check if click hit handles of currently selected line
+        selected_line = self.layout_manager.get_selected_line()
+        if selected_line and selected_line.is_visible:
+            lcx = self._offset_x + selected_line.x * self._displayed_w
+            lcy = self._offset_y + selected_line.y * self._displayed_h
+            half_len = (selected_line.length * self._displayed_w) / 2.0
+            lx1 = lcx - half_len
+            lx2 = lcx + half_len
+
+            handle_rad = 10
+            # Left Handle
+            if abs(cx - lx1) <= handle_rad and abs(cy - lcy) <= handle_rad:
+                self._drag_mode = "line_left"
+                self._drag_line_id = selected_line.id
+                self._drag_start_norm_x = selected_line.x
+                self._drag_start_norm_y = selected_line.y
+                self.canvas.config(cursor="sb_h_double_arrow")
+                return
+
+            # Right Handle
+            if abs(cx - lx2) <= handle_rad and abs(cy - lcy) <= handle_rad:
+                self._drag_mode = "line_right"
+                self._drag_line_id = selected_line.id
+                self._drag_start_norm_x = selected_line.x
+                self._drag_start_norm_y = selected_line.y
+                self.canvas.config(cursor="sb_h_double_arrow")
+                return
+
+            # Center Handle
+            if abs(cx - lcx) <= handle_rad and abs(cy - lcy) <= handle_rad:
+                self._drag_mode = "line_move"
+                self._drag_line_id = selected_line.id
+                self._drag_start_norm_x = selected_line.x
+                self._drag_start_norm_y = selected_line.y
+                self.canvas.config(cursor="fleur")
+                return
+
+        # 2. Check if click hit ANY strike line body (top layer first)
+        hit_line = None
+        for l in reversed(self.layout_manager.lines):
+            if not l.is_visible:
+                continue
+            lcx = self._offset_x + l.x * self._displayed_w
+            lcy = self._offset_y + l.y * self._displayed_h
+            half_len = (l.length * self._displayed_w) / 2.0
+            lx1 = lcx - half_len
+            lx2 = lcx + half_len
+            thick_pad = max(7, int(l.thickness * self._scale / 2.0) + 5)
+
+            if (lx1 - 6 <= cx <= lx2 + 6) and (lcy - thick_pad <= cy <= lcy + thick_pad):
+                hit_line = l
+                break
+
+        if hit_line:
+            self.layout_manager.select_line(hit_line.id)
+            self._drag_mode = "line_move"
+            self._drag_line_id = hit_line.id
+            self._drag_start_norm_x = hit_line.x
+            self._drag_start_norm_y = hit_line.y
+            if self.on_field_selected:
+                self.on_field_selected(hit_line)
+            self.canvas.config(cursor="fleur")
+            self.refresh()
+            return
+
+        # 3. Check if click hit any text field (in reverse order)
         hit_field = None
         for f in reversed(self.layout_manager.fields):
             if not f.is_visible:
@@ -458,6 +646,7 @@ class CanvasEditor(ctk.CTkFrame):
 
         if hit_field:
             self.layout_manager.select_field(hit_field.id)
+            self._drag_mode = "field"
             self._drag_field_id = hit_field.id
             self._drag_start_norm_x = hit_field.x
             self._drag_start_norm_y = hit_field.y
@@ -465,8 +654,10 @@ class CanvasEditor(ctk.CTkFrame):
                 self.on_field_selected(hit_field)
             self.canvas.config(cursor="fleur")
         else:
-            self.layout_manager.select_field(None)
+            self.layout_manager.clear_selection()
+            self._drag_mode = None
             self._drag_field_id = None
+            self._drag_line_id = None
             if self.on_field_selected:
                 self.on_field_selected(None)
             self.canvas.config(cursor="crosshair")
@@ -474,67 +665,129 @@ class CanvasEditor(ctk.CTkFrame):
         self.refresh()
 
     def _on_mouse_drag(self, event: tk.Event) -> None:
-        """Updates field position during drag with real-time snapping."""
-        if not self._drag_field_id or not self.template_image:
-            return
-
-        field_obj = self.layout_manager.get_field(self._drag_field_id)
-        if not field_obj:
+        """Updates line or field position/length during drag with real-time feedback."""
+        if not self.template_image:
             return
 
         self._is_dragging = True
 
-        dx_canvas = event.x - self._mouse_down_canvas_x
-        dy_canvas = event.y - self._mouse_down_canvas_y
+        if self._drag_mode == "line_left" and self._drag_line_id:
+            line = self.layout_manager.get_line(self._drag_line_id)
+            if not line:
+                return
+            norm_x, _ = self.canvas_to_norm(event.x, event.y)
+            fixed_x2 = line.x2
+            clamped_x1 = min(fixed_x2 - 0.01, max(0.0, norm_x))
+            line.set_endpoints(clamped_x1, fixed_x2)
+            self._draw_canvas_content()
+            return
 
-        dx_norm = dx_canvas / max(1, self._displayed_w)
-        dy_norm = dy_canvas / max(1, self._displayed_h)
+        if self._drag_mode == "line_right" and self._drag_line_id:
+            line = self.layout_manager.get_line(self._drag_line_id)
+            if not line:
+                return
+            norm_x, _ = self.canvas_to_norm(event.x, event.y)
+            fixed_x1 = line.x1
+            clamped_x2 = max(fixed_x1 + 0.01, min(1.0, norm_x))
+            line.set_endpoints(fixed_x1, clamped_x2)
+            self._draw_canvas_content()
+            return
 
-        new_x = max(0.0, min(1.0, self._drag_start_norm_x + dx_norm))
-        new_y = max(0.0, min(1.0, self._drag_start_norm_y + dy_norm))
+        if self._drag_mode == "line_move" and self._drag_line_id:
+            line = self.layout_manager.get_line(self._drag_line_id)
+            if not line:
+                return
+            dx_canvas = event.x - self._mouse_down_canvas_x
+            dy_canvas = event.y - self._mouse_down_canvas_y
+            dx_norm = dx_canvas / max(1, self._displayed_w)
+            dy_norm = dy_canvas / max(1, self._displayed_h)
+            new_x = max(0.0, min(1.0, self._drag_start_norm_x + dx_norm))
+            new_y = max(0.0, min(1.0, self._drag_start_norm_y + dy_norm))
 
-        self._active_guidelines.clear()
+            self._active_guidelines.clear()
+            if self.snap_enabled:
+                if abs(new_x - 0.50) < 0.012:
+                    new_x = 0.50
+                    mid_x = self._offset_x + 0.50 * self._displayed_w
+                    self._active_guidelines.append({
+                        "coords": (mid_x, self._offset_y, mid_x, self._offset_y + self._displayed_h)
+                    })
+                if abs(new_y - 0.50) < 0.012:
+                    new_y = 0.50
+                    mid_y = self._offset_y + 0.50 * self._displayed_h
+                    self._active_guidelines.append({
+                        "coords": (self._offset_x, mid_y, self._offset_x + self._displayed_w, mid_y)
+                    })
 
-        # Snapping to Center (0.50) and Margins
-        if self.snap_enabled:
-            snap_dist = 0.012  # Threshold in normalized space
-            # Center X
-            if abs(new_x - 0.50) < snap_dist:
-                new_x = 0.50
-                mid_x = self._offset_x + 0.50 * self._displayed_w
-                self._active_guidelines.append({
-                    "coords": (mid_x, self._offset_y, mid_x, self._offset_y + self._displayed_h)
-                })
-            # Center Y
-            if abs(new_y - 0.50) < snap_dist:
-                new_y = 0.50
-                mid_y = self._offset_y + 0.50 * self._displayed_h
-                self._active_guidelines.append({
-                    "coords": (self._offset_x, mid_y, self._offset_x + self._displayed_w, mid_y)
-                })
+            line.x = new_x
+            line.y = new_y
+            self._draw_canvas_content()
+            return
 
-        # Apply position directly to object without snapshot on every pixel move
-        field_obj.x = new_x
-        field_obj.y = new_y
+        if self._drag_mode == "field" and self._drag_field_id:
+            field_obj = self.layout_manager.get_field(self._drag_field_id)
+            if not field_obj:
+                return
 
-        self._draw_canvas_content()
+            dx_canvas = event.x - self._mouse_down_canvas_x
+            dy_canvas = event.y - self._mouse_down_canvas_y
+
+            dx_norm = dx_canvas / max(1, self._displayed_w)
+            dy_norm = dy_canvas / max(1, self._displayed_h)
+
+            new_x = max(0.0, min(1.0, self._drag_start_norm_x + dx_norm))
+            new_y = max(0.0, min(1.0, self._drag_start_norm_y + dy_norm))
+
+            self._active_guidelines.clear()
+            if self.snap_enabled:
+                snap_dist = 0.012
+                if abs(new_x - 0.50) < snap_dist:
+                    new_x = 0.50
+                    mid_x = self._offset_x + 0.50 * self._displayed_w
+                    self._active_guidelines.append({
+                        "coords": (mid_x, self._offset_y, mid_x, self._offset_y + self._displayed_h)
+                    })
+                if abs(new_y - 0.50) < snap_dist:
+                    new_y = 0.50
+                    mid_y = self._offset_y + 0.50 * self._displayed_h
+                    self._active_guidelines.append({
+                        "coords": (self._offset_x, mid_y, self._offset_x + self._displayed_w, mid_y)
+                    })
+
+            field_obj.x = new_x
+            field_obj.y = new_y
+            self._draw_canvas_content()
 
     def _on_mouse_up(self, event: tk.Event) -> None:
         """Finalizes drag operation and commits undo history snapshot."""
-        if self._is_dragging and self._drag_field_id:
-            # Register change in layout manager for undo/redo
-            field_obj = self.layout_manager.get_field(self._drag_field_id)
-            if field_obj:
-                self.layout_manager.update_field_property(
-                    self._drag_field_id,
-                    x=field_obj.x,
-                    y=field_obj.y,
-                )
+        if self._is_dragging:
+            if self._drag_mode in ("line_move", "line_left", "line_right") and self._drag_line_id:
+                line = self.layout_manager.get_line(self._drag_line_id)
+                if line:
+                    self.layout_manager.update_line_property(
+                        self._drag_line_id,
+                        x=line.x,
+                        y=line.y,
+                        length=line.length,
+                    )
+            elif self._drag_mode == "field" and self._drag_field_id:
+                field_obj = self.layout_manager.get_field(self._drag_field_id)
+                if field_obj:
+                    self.layout_manager.update_field_property(
+                        self._drag_field_id,
+                        x=field_obj.x,
+                        y=field_obj.y,
+                    )
 
         self._drag_field_id = None
+        self._drag_line_id = None
+        self._drag_mode = None
         self._is_dragging = False
         self._active_guidelines.clear()
-        self.canvas.config(cursor="crosshair")
+        if self._tool_mode == "add_line":
+            self.canvas.config(cursor="plus")
+        else:
+            self.canvas.config(cursor="crosshair")
         self.refresh()
 
     def _on_mouse_wheel(self, event: tk.Event) -> None:
@@ -555,7 +808,17 @@ class CanvasEditor(ctk.CTkFrame):
     # -------------------------------------------------------------------------
 
     def _nudge_selected(self, dx: float, dy: float) -> None:
-        """Moves selected field incrementally via arrow keys."""
+        """Moves selected field or line incrementally via arrow keys."""
+        if self.layout_manager.selected_type == "line":
+            selected_line = self.layout_manager.get_selected_line()
+            if not selected_line:
+                return
+            new_x = max(0.0, min(1.0, selected_line.x + dx))
+            new_y = max(0.0, min(1.0, selected_line.y + dy))
+            self.layout_manager.update_line_property(selected_line.id, x=new_x, y=new_y)
+            self.refresh()
+            return
+
         selected = self.layout_manager.get_selected_field()
         if not selected:
             return
@@ -565,7 +828,16 @@ class CanvasEditor(ctk.CTkFrame):
         self.refresh()
 
     def _delete_selected(self) -> None:
-        """Deletes selected field via Delete/Backspace key."""
+        """Deletes selected field or line via Delete/Backspace key."""
+        if self.layout_manager.selected_type == "line":
+            selected_line = self.layout_manager.get_selected_line()
+            if selected_line:
+                self.layout_manager.delete_line(selected_line.id)
+                if self.on_field_selected:
+                    self.on_field_selected(None)
+                self.refresh()
+            return
+
         selected = self.layout_manager.get_selected_field()
         if selected:
             self.layout_manager.delete_field(selected.id)

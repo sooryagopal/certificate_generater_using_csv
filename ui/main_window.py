@@ -480,6 +480,7 @@ class MainWindow(ctk.CTk):
             options=options,
             progress_callback=on_progress,
             completion_callback=on_complete,
+            lines=self.layout_manager.lines,
         )
 
     def _handle_progress_update(self, progress: GenerationProgress) -> None:

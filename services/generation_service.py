@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional, Callable, Set
 from PIL import Image
 
 from models.text_field import TextField
+from models.strike_line import StrikeLine
 from models.generation_result import GenerationResult
 from core.renderer import Renderer
 from core.filename_utils import FilenameUtils, CollisionPolicy
@@ -103,6 +104,7 @@ class GenerationService:
         options: GenerationOptions,
         progress_callback: Callable[[GenerationProgress], None],
         completion_callback: Callable[[List[GenerationResult], Optional[str], Optional[str]], None],
+        lines: Optional[List[StrikeLine]] = None,
     ) -> None:
         """
         Launches background thread for non-blocking batch generation.
@@ -125,6 +127,7 @@ class GenerationService:
                     records=records,
                     options=options,
                     progress_callback=progress_callback,
+                    lines=lines,
                 )
             except Exception as e:
                 # Fatal worker exception
@@ -154,6 +157,7 @@ class GenerationService:
         records: List[Dict[str, Any]],
         options: GenerationOptions,
         progress_callback: Callable[[GenerationProgress], None],
+        lines: Optional[List[StrikeLine]] = None,
     ) -> Tuple[List[GenerationResult], Optional[str], Optional[str]]:
         """Core batch processing loop executed in worker thread."""
         total_records = len(records)
@@ -225,6 +229,7 @@ class GenerationService:
                     fields=fields,
                     record=record,
                     scale=1.0,
+                    lines=lines,
                 )
 
                 # 3. Export PDF if needed

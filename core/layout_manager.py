@@ -6,19 +6,23 @@ and robust undo/redo history stacks.
 
 from __future__ import annotations
 import copy
-from typing import List, Optional, Dict, Any, Callable, Tuple
+from typing import List, Optional, Dict, Any, Callable, Tuple, Union
 from models.text_field import TextField
+from models.strike_line import StrikeLine
 from models.layout_preset import LayoutPreset
 
 
 class LayoutManager:
-    """State manager for active certificate fields with undo/redo capabilities."""
+    """State manager for active certificate fields and strike-through lines with undo/redo capabilities."""
 
     def __init__(self, max_history: int = 50) -> None:
         self.fields: List[TextField] = []
+        self.lines: List[StrikeLine] = []
         self.selected_field_id: Optional[str] = None
-        self._undo_stack: List[List[Dict[str, Any]]] = []
-        self._redo_stack: List[List[Dict[str, Any]]] = []
+        self.selected_line_id: Optional[str] = None
+        self.selected_type: str = "field"  # "field" or "line"
+        self._undo_stack: List[Dict[str, Any]] = []
+        self._redo_stack: List[Dict[str, Any]] = []
         self.max_history = max_history
         self._on_change_callbacks: List[Callable[[], None]] = []
 
@@ -34,8 +38,11 @@ class LayoutManager:
                 pass
 
     def _save_snapshot(self) -> None:
-        """Saves current fields state onto undo stack and clears redo stack."""
-        snapshot = [f.to_dict() for f in self.fields]
+        """Saves current fields and lines state onto undo stack and clears redo stack."""
+        snapshot = {
+            "fields": [f.to_dict() for f in self.fields],
+            "lines": [l.to_dict() for l in self.lines],
+        }
         self._undo_stack.append(snapshot)
         if len(self._undo_stack) > self.max_history:
             self._undo_stack.pop(0)
@@ -53,16 +60,26 @@ class LayoutManager:
             return False
 
         # Current state goes to redo stack
-        current_state = [f.to_dict() for f in self.fields]
+        current_state = {
+            "fields": [f.to_dict() for f in self.fields],
+            "lines": [l.to_dict() for l in self.lines],
+        }
         self._redo_stack.append(current_state)
 
         # Restore from undo stack
         prev_state = self._undo_stack.pop()
-        self.fields = [TextField.from_dict(d) for d in prev_state]
+        if isinstance(prev_state, dict):
+            self.fields = [TextField.from_dict(d) for d in prev_state.get("fields", [])]
+            self.lines = [StrikeLine.from_dict(d) for d in prev_state.get("lines", [])]
+        else:
+            self.fields = [TextField.from_dict(d) for d in prev_state]
+            self.lines = []
 
         # Ensure selected_field_id is still valid
         if self.selected_field_id and not self.get_field(self.selected_field_id):
             self.selected_field_id = self.fields[0].id if self.fields else None
+        if self.selected_line_id and not self.get_line(self.selected_line_id):
+            self.selected_line_id = self.lines[0].id if self.lines else None
 
         self._notify_change()
         return True
@@ -72,14 +89,24 @@ class LayoutManager:
         if not self.can_redo():
             return False
 
-        current_state = [f.to_dict() for f in self.fields]
+        current_state = {
+            "fields": [f.to_dict() for f in self.fields],
+            "lines": [l.to_dict() for l in self.lines],
+        }
         self._undo_stack.append(current_state)
 
         next_state = self._redo_stack.pop()
-        self.fields = [TextField.from_dict(d) for d in next_state]
+        if isinstance(next_state, dict):
+            self.fields = [TextField.from_dict(d) for d in next_state.get("fields", [])]
+            self.lines = [StrikeLine.from_dict(d) for d in next_state.get("lines", [])]
+        else:
+            self.fields = [TextField.from_dict(d) for d in next_state]
+            self.lines = []
 
         if self.selected_field_id and not self.get_field(self.selected_field_id):
             self.selected_field_id = self.fields[0].id if self.fields else None
+        if self.selected_line_id and not self.get_line(self.selected_line_id):
+            self.selected_line_id = self.lines[0].id if self.lines else None
 
         self._notify_change()
         return True
@@ -98,9 +125,22 @@ class LayoutManager:
         return self.get_field(self.selected_field_id)
 
     def select_field(self, field_id: Optional[str]) -> None:
-        """Sets the selected field ID."""
+        """Sets the selected field ID and clears line selection."""
         self.selected_field_id = field_id
+        if field_id is not None:
+            self.selected_line_id = None
+            self.selected_type = "field"
+        elif self.selected_type == "field":
+            self.selected_type = "none"
         self._notify_change()
+
+    def clear_selection(self) -> None:
+        """Deselects any active field or line."""
+        self.selected_field_id = None
+        self.selected_line_id = None
+        self.selected_type = "none"
+        self._notify_change()
+
 
     def add_field(
         self,
@@ -208,19 +248,26 @@ class LayoutManager:
         return self.update_field_property(field_id, x=0.50, y=0.50)
 
     def reset_layout(self) -> None:
-        """Clears all fields."""
-        if self.fields:
+        """Clears all fields and lines."""
+        if self.fields or self.lines:
             self._save_snapshot()
             self.fields.clear()
+            self.lines.clear()
             self.selected_field_id = None
+            self.selected_line_id = None
+            self.selected_type = "none"
             self._notify_change()
 
     def load_preset(self, preset: LayoutPreset) -> None:
-        """Replaces current layout with preset fields."""
+        """Replaces current layout with preset fields and lines."""
         self._save_snapshot()
         self.fields = [f.copy() for f in preset.fields]
+        self.lines = [l.copy() for l in getattr(preset, "lines", [])]
         self._reindex_order()
+        self._reindex_line_order()
         self.selected_field_id = self.fields[0].id if self.fields else None
+        self.selected_line_id = None
+        self.selected_type = "field" if self.fields else ("line" if self.lines else "none")
         self._notify_change()
 
     def export_to_preset(
@@ -231,7 +278,7 @@ class LayoutManager:
         template_name: Optional[str] = None,
         description: str = "",
     ) -> LayoutPreset:
-        """Generates a LayoutPreset from current fields."""
+        """Generates a LayoutPreset from current fields and lines."""
         return LayoutPreset(
             name=name,
             version="2.0",
@@ -240,7 +287,122 @@ class LayoutManager:
             template_height=template_h,
             template_name=template_name,
             fields=[f.copy() for f in self.fields],
+            lines=[l.copy() for l in self.lines],
         )
+
+    # -------------------------------------------------------------------------
+    # STRIKE-THROUGH LINE OPERATIONS
+    # -------------------------------------------------------------------------
+
+    def get_line(self, line_id: str) -> Optional[StrikeLine]:
+        """Lookup strike-through line by ID."""
+        for line in self.lines:
+            if line.id == line_id:
+                return line
+        return None
+
+    def get_selected_line(self) -> Optional[StrikeLine]:
+        """Returns the currently selected strike-through line or None."""
+        if not self.selected_line_id:
+            return None
+        return self.get_line(self.selected_line_id)
+
+    def select_line(self, line_id: Optional[str]) -> None:
+        """Sets the selected line ID and clears field selection."""
+        self.selected_line_id = line_id
+        if line_id is not None:
+            self.selected_field_id = None
+            self.selected_type = "line"
+        elif self.selected_type == "line":
+            self.selected_type = "none"
+        self._notify_change()
+
+    def add_strike_line(
+        self,
+        name: str = "Strike Line",
+        x: float = 0.50,
+        y: float = 0.50,
+        length: float = 0.15,
+        thickness: int = 3,
+        color: str = "#000000",
+    ) -> StrikeLine:
+        """Creates and appends a new manual strike-through line."""
+        self._save_snapshot()
+
+        # Generate a friendly incremental name if default
+        line_idx = len(self.lines) + 1
+        line_name = f"{name} {line_idx}" if name == "Strike Line" else name
+
+        new_line = StrikeLine(
+            name=line_name,
+            x=x,
+            y=y,
+            length=length,
+            thickness=thickness,
+            color=color,
+            order=len(self.lines),
+        )
+        self.lines.append(new_line)
+        self.selected_line_id = new_line.id
+        self.selected_field_id = None
+        self.selected_type = "line"
+        self._notify_change()
+        return new_line
+
+    def delete_line(self, line_id: str) -> bool:
+        """Removes the strike line with given ID."""
+        target = self.get_line(line_id)
+        if not target:
+            return False
+
+        self._save_snapshot()
+        self.lines = [l for l in self.lines if l.id != line_id]
+
+        if self.selected_line_id == line_id:
+            self.selected_line_id = self.lines[0].id if self.lines else None
+            if not self.selected_line_id:
+                self.selected_type = "field" if self.fields else "none"
+
+        self._reindex_line_order()
+        self._notify_change()
+        return True
+
+    def duplicate_line(self, line_id: str) -> Optional[StrikeLine]:
+        """Duplicates a line with slightly offset coordinates."""
+        source = self.get_line(line_id)
+        if not source:
+            return None
+
+        self._save_snapshot()
+        dup = source.copy()
+        dup.y = min(0.95, dup.y + 0.02)
+        dup.order = len(self.lines)
+        self.lines.append(dup)
+        self.selected_line_id = dup.id
+        self.selected_field_id = None
+        self.selected_type = "line"
+        self._notify_change()
+        return dup
+
+    def update_line_property(self, line_id: str, **kwargs: Any) -> bool:
+        """Updates specific attributes of a strike line, recording undo snapshot."""
+        target = self.get_line(line_id)
+        if not target:
+            return False
+
+        self._save_snapshot()
+        for k, v in kwargs.items():
+            if hasattr(target, k):
+                setattr(target, k, v)
+
+        self._notify_change()
+        return True
+
+    def _reindex_line_order(self) -> None:
+        """Re-assigns sequential order numbers to all lines."""
+        for i, l in enumerate(self.lines):
+            l.order = i
+
 
     def add_placeholder_field(
         self,

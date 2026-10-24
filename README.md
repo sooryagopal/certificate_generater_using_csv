@@ -3,7 +3,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![UI: CustomTkinter](https://img.shields.io/badge/UI-CustomTkinter-black.svg)](https://customtkinter.tomschimansky.com/)
-[![Tests: 44 Passed](https://img.shields.io/badge/tests-44%20passed-brightgreen.svg)]()
+[![Tests: 50 Passed](https://img.shields.io/badge/tests-50%20passed-brightgreen.svg)]()
 
 **AURELIA** is a bulk certificate generation studio designed for academic institutions, corporate events, and conferences. Built with Python, CustomTkinter, Pillow, and PyMuPDF, AURELIA transforms raw CSV recipient rosters and graphic templates (PDF/PNG/JPG) into high-fidelity, print-ready certificates in individual and multi-page formats.
 
@@ -14,32 +14,41 @@ All certificate generation and recipient data processing run strictly on your lo
 ## Table of Contents
 
 1. [Key Features](#key-features)
-2. [Dynamic CSV Placeholders System](#dynamic-csv-placeholders-system)
-3. [Technology Stack](#technology-stack)
-4. [Architecture and Directory Structure](#architecture-and-directory-structure)
-5. [Prerequisites](#prerequisites)
-6. [Installation & Setup](#installation--setup)
+2. [Manual Strike-Through Line Tool](#manual-strike-through-line-tool)
+3. [Dynamic CSV Placeholders System](#dynamic-csv-placeholders-system)
+4. [Technology Stack](#technology-stack)
+5. [Architecture and Directory Structure](#architecture-and-directory-structure)
+6. [Prerequisites](#prerequisites)
+7. [Installation & Setup](#installation--setup)
    - [macOS Setup](#macos-setup)
    - [Windows Setup](#windows-setup)
    - [Linux Setup](#linux-setup)
-7. [Launching the Application](#launching-the-application)
-8. [Step-by-Step Usage Guide](#step-by-step-usage-guide)
-9. [Sample CSV Format](#sample-csv-format)
-10. [Visual Certificate Canvas & Positioning](#visual-certificate-canvas--positioning)
-11. [Typography, Fonts, and International Scripts](#typography-fonts-and-international-scripts)
-12. [Layout Presets Management (Version 2.0)](#layout-presets-management-version-20)
-13. [Export Options & File Structure](#export-options--file-structure)
-14. [Auditing & Generation Reports](#auditing--generation-reports)
-15. [Automated Testing Suite (44 Tests)](#automated-testing-suite-44-tests)
-16. [PyInstaller Standalone Packaging](#pyinstaller-standalone-packaging)
-17. [Changelog](#changelog)
-18. [Troubleshooting & Common Questions](#troubleshooting--common-questions)
+8. [Launching the Application](#launching-the-application)
+9. [Step-by-Step Usage Guide](#step-by-step-usage-guide)
+10. [Sample CSV Format](#sample-csv-format)
+11. [Visual Certificate Canvas & Positioning](#visual-certificate-canvas--positioning)
+12. [Typography, Fonts, and International Scripts](#typography-fonts-and-international-scripts)
+13. [Layout Presets Management (Version 2.0)](#layout-presets-management-version-20)
+14. [Export Options & File Structure](#export-options--file-structure)
+15. [Auditing & Generation Reports](#auditing--generation-reports)
+16. [Automated Testing Suite (50 Tests)](#automated-testing-suite-50-tests)
+17. [PyInstaller Standalone Packaging](#pyinstaller-standalone-packaging)
+18. [Changelog](#changelog)
+19. [Troubleshooting & Common Questions](#troubleshooting--common-questions)
 
 ---
 
 ## Key Features
 
 - **Luxury Studio Aesthetic**: Visual layout with a pitch black (`#0B0B0D`) background, dark charcoal (`#151518`) panels, and restrained regal gold (`#D4AF37`) accents.
+- **Manual Strike-Through Line Tool**: Interactive object overlay tool enabling users to manually strike through text options (e.g. `[TECHNICAL / NON-TECHNICAL]`) with full control:
+  - **Click-to-Place Tool**: Click `━ Strike Line` on the toolbar, then click anywhere on the certificate preview to drop a horizontal line.
+  - **Interactive Drag Handles**: Left and right resize handles to adjust line span, plus center handle and body dragging to reposition anywhere.
+  - **Customizable Styling**: Real-time slider adjustments for length, stroke thickness (1–20 px), color chooser, hex entry, and quick color palettes.
+  - **Quick Placement Presets**: 1-click alignments for `Strike NON-TECH` and `Strike TECH`.
+  - **Multiple Lines & Full Deletion**: Add multiple lines, toggle visibility, and delete via the `Delete` / `Backspace` key or inspector button.
+  - **Exact Resolution Exporting**: High-resolution rendering at 300 DPI for PDF, PNG, JPG, and multi-page Combined PDF exports.
+  - **Preset Persistence**: Automatically saved and reloaded in Layout Presets (Schema Version 2.0).
 - **Dynamic CSV Column Detection**: Automatically detects *every* column header in any uploaded CSV file (5, 20, 50, or 100+ columns) without hardcoding or arbitrary limits.
 - **Canonical `{{ColumnName}}` Syntax**: Fully preserves spaces, special characters, and Unicode scripts (e.g. `{{Student Name}}`, `{{பெயர்}}`).
 - **Dedicated CSV PLACEHOLDERS Panel**:
@@ -66,6 +75,29 @@ All certificate generation and recipient data processing run strictly on your lo
 - **Pre-Flight Diagnostic Audit**: Catches missing mappings, unresolved placeholders, unreadable fonts, low-resolution templates, and blank values before batch generation begins.
 - **Threaded Worker Processing**: Non-blocking background generation keeps the user interface responsive, featuring live progress bars, speed metrics, and clean cancellation.
 - **Comprehensive Audit Report**: Automatically exports `generation_report.csv` detailing the outcome, generated filenames, and timestamps for every single row.
+
+---
+
+## Manual Strike-Through Line Tool
+
+The certificate editor includes a dedicated manual strike-through line tool for certificates that include dual-option categories such as:
+
+```text
+[TECHNICAL / NON-TECHNICAL]
+```
+
+### How to Use
+1. **Activate the Tool**: Click the **`━ Strike Line`** button on the canvas toolbar or **`+ Line`** in the right inspector panel.
+2. **Place the Line**: Click on the certificate preview where the category appears. A horizontal line appears centered at your click.
+3. **Reposition Freely**: Drag the center diamond handle or the line body to position the line exactly over the text you wish to strike through.
+4. **Adjust Span**: Drag the left handle to resize the left endpoint, or the right handle to resize the right endpoint.
+5. **Customize**: Use the right inspector panel to adjust:
+   - Stroke thickness (from 1 px up to 20 px)
+   - Line colour (Black `#000000`, Gold `#D4AF37`, Charcoal, Crimson, or custom hex/color picker)
+   - Quick presets: **`Strike NON-TECH`** or **`Strike TECH`**
+6. **Save in Preset**: When you click **Save Preset** in Step 3, the strike line's coordinates, length, thickness, and color are saved in the preset so you can reuse them across batches.
+7. **Export**: When you click **Generate Certificates**, all exported PDFs, PNGs, JPGs, and the combined PDF will render the strike line in the exact same location at full print resolution.
+
 
 ---
 

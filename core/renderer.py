@@ -12,6 +12,7 @@ from typing import List, Dict, Tuple, Optional, Any, TYPE_CHECKING
 from PIL import Image, ImageDraw, ImageFont
 if TYPE_CHECKING:
     from models.text_field import TextField
+    from models.strike_line import StrikeLine
 from core.font_manager import FontManager
 
 
@@ -27,15 +28,17 @@ class Renderer:
         fields: List[TextField],
         record: Optional[Dict[str, Any]] = None,
         scale: float = 1.0,
+        lines: Optional[List[StrikeLine]] = None,
     ) -> Image.Image:
         """
-        Renders all visible fields onto a copy of the template image.
+        Renders all visible fields and strike-through lines onto a copy of the template image.
         
         Args:
             template_image: Source template PIL Image (RGB mode).
             fields: List of TextField objects.
             record: Dictionary mapping CSV column names to participant values.
             scale: Resolution scaling multiplier (1.0 for original, < 1.0 for UI thumbnails).
+            lines: Optional list of StrikeLine objects to draw.
 
         Returns:
             Rendered PIL Image.
@@ -56,7 +59,35 @@ class Renderer:
                 continue
             self._render_field(base_img, field_obj, record, target_w, target_h, scale)
 
+        # Draw strike-through lines
+        if lines:
+            draw = ImageDraw.Draw(base_img)
+            sorted_lines = sorted(lines, key=lambda l: l.order)
+            for line_obj in sorted_lines:
+                if not line_obj.is_visible:
+                    continue
+                self._render_line(draw, line_obj, target_w, target_h, scale)
+
         return base_img
+
+    def _render_line(
+        self,
+        draw: ImageDraw.ImageDraw,
+        line_obj: StrikeLine,
+        canvas_w: int,
+        canvas_h: int,
+        scale: float,
+    ) -> None:
+        """Renders an individual StrikeLine onto the canvas image."""
+        cx = line_obj.x * canvas_w
+        cy = line_obj.y * canvas_h
+        len_px = line_obj.length * canvas_w
+        x1 = cx - (len_px / 2.0)
+        x2 = cx + (len_px / 2.0)
+        thickness = max(1, int(round(line_obj.thickness * scale)))
+
+        draw.line([(x1, cy), (x2, cy)], fill=line_obj.color, width=thickness)
+
 
     def _render_field(
         self,
